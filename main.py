@@ -1,11 +1,11 @@
 import os
 import argparse
-import json
+import sys
 
 from dotenv import load_dotenv
 from openai import OpenAI
 from prompts import system_prompt
-from call_function import available_functions
+from call_function import available_functions, call_function
 
 
 def main() -> None:
@@ -31,29 +31,43 @@ def main() -> None:
         base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
     )
-    response = client.chat.completions.create(
-        model="openrouter/free",
-        messages=messages,
-        tools=available_functions,
-    )
-    if response.usage == None:
-        raise RuntimeError("Usage information not available")
+    for _ in range(20):
+        try:
+            response = client.chat.completions.create(
+            model="openrouter/free",
+            messages=messages,
+            tools=available_functions,
+        )
+            if response.usage == None:
+                raise RuntimeError("Usage information not available")
 
 
-    if args.verbose:
-        print(f"User prompt: {args.user_prompt}")
-        print(f"Prompt tokens: {response.usage.prompt_tokens}")
-        print(f"Response tokens: {response.usage.completion_tokens}")
+            if args.verbose:
+                print(f"User prompt: {args.user_prompt}")
+                print(f"Prompt tokens: {response.usage.prompt_tokens}")
+                print(f"Response tokens: {response.usage.completion_tokens}")
 
-    message = response.choices[0].message
-    if message.tool_calls:
-        for tool_call in message.tool_calls:
-            function_args = json.loads(tool_call.function.arguments or "{}")
-            print(f"Calling function: {tool_call.function.name}({function_args})")
-    else:
-        print("Response:")
-        print(message.content)
-    
+            message = response.choices[0].message
+            messages.append(message)
+            if not message.tool_calls:
+                return message.content
+
+            for tool_call in message.tool_calls:
+                if tool_call.type != "function":
+                    continue
+                result_message = call_function(tool_call, args.verbose)
+                messages.append(result_message)
+                if not result_message.get("content"):
+                    raise RuntimeError(f"Empty function response for {tool_call.function.name}")
+                if args.verbose:
+                    print(f"-> {result_message['content']}")
+        except Exception as e:
+            print(f"Error occurred: {e}")
+    if message.content:
+        print(f"Final response: {message.content}")
+        return
+    print(f"Max iterations reached")
+    sys.exit(1)
 
 
 if __name__ == "__main__":

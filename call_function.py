@@ -33,13 +33,13 @@ def call_function(tool_call, verbose = False):
     else:
         print(f" - Calling function: {function_name}")
 
-    if tool_call.name not in function_map:
+    if function_name not in function_map:
         return {
             "role": "tool",
             "tool_call_id": tool_call.id,
             "content": f"Error: Unknown function: {function_name}",
             }
-    result = function_map[tool_call.name](**function_args)
+    result = function_map[function_name](**function_args)
     return {
         "role": "tool",
         "tool_call_id": tool_call.id,
